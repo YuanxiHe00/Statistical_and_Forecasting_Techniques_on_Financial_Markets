@@ -132,7 +132,6 @@ legend('topright',c('PACF of returns'),cex=0.8,lwd=2, col='tomato')
 
 #############
 
-jpeg("./fig/ACF_ret_sq_abs.jpg", units="in", width=7, height=7, res=300)
 par(mar=c(2,2,0.5,0.5), mfrow=c(2,2))
 ret_sq.acf <- acf(ret_sq, lwd=5, col='tomato', lag.max = 50) ## ACF for squared returns
 legend('topright',c('ACF of squared returns'),cex=0.8,lwd=2, col='tomato')
@@ -145,7 +144,6 @@ legend('topright',c('ACF of absolute returns'),cex=0.8,lwd=2, col='tomato')
 
 ret_abs.pacf <- pacf(ret_abs, lwd=5, col='tomato', lag.max = 50) ## PACF for absolute returns
 legend('topright',c('PACF of absolute returns'),cex=0.8,lwd=2, col='tomato')
-dev.off()
 
 #############
 print(ret.acf)

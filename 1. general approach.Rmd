@@ -68,9 +68,9 @@ ret_abs <- abs(returns)
 
 ret <- cbind.data.frame(dates[2:T],returns,ret_abs,ret_sq)
 
-save(ret, file = "returns.RData")
-
 colnames(ret)<-c("dates","returns","abs_returns","sq_returns")
+
+save(ret, file = "data/returns.RData")
 ```
 
 ## Stationarity-ADF test:

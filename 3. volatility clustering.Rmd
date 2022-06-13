@@ -135,14 +135,11 @@ garch11_plot2<-ggplot() +
   theme_light()+
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-jpeg("./fig/annv_ret_plot.jpg", units="in", width=7, height=7, res=300)
 ggarrange(arch11_plot1,garch11_plot1,arch11_plot2,garch11_plot2,ncol = 2, nrow = 2)
-dev.off()
 
 #residuals
 zg<-returns/sigmag
 
-jpeg("./fig/arch_res_plot.jpg", units="in", width=7, height=7, res=300)
 ggplot() +
   geom_line(mapping = aes(x = dates[1:T-1], y = z),col='tomato')+
   geom_hline(yintercept=0, color = "darkblue", lwd=0.5)+
@@ -151,9 +148,7 @@ ggplot() +
   xlab("Dates")+
   theme_light()+
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-dev.off()
 
-jpeg("./fig/garch_res_plot.jpg", units="in", width=7, height=7, res=300)
 ggplot() +
   geom_line(mapping = aes(x = dates[1:T-1], y = zg),col='tomato')+
   geom_hline(yintercept=0, color = "darkblue", lwd=0.5)+
@@ -162,11 +157,8 @@ ggplot() +
   xlab("Dates")+
   theme_light()+
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-dev.off()
 
 #residuals vs returns
-jpeg("./fig/residuals.jpg", units="in", width=7, height=7, res=300)
-
 par(mar=c(2,2,0.5,0.5), mfrow=c(2,2))
 
 qqnorm(z,col='tomato',main='')
@@ -182,8 +174,6 @@ legend('topleft',c('GARCH(1,1) residuals'))
 
 acf( abs(zg[2:length(zg)]) , lag.max=252 , ylim=c(-0.1,1) , lwd=5 , xlim=c(0,51) , col='tomato',main='')
 legend('topright',c('GARCH (1,1) residuals'))
-
-dev.off()
 
 jb.r <- jarque.test(returns)
 jb.z <- jarque.test(z[12:length(returns)])
@@ -224,9 +214,7 @@ asy.2<-ggplot() +
   scale_y_continuous(expand = c(0, 0.05), limits = c(0, 8))+
   theme_light()
 
-jpeg("./fig/asymmetric.jpg", units="in", width=7, height=7, res=300)
 ggarrange(asy.1, asy.2,ncol = 1, nrow = 2)
-dev.off()
 
 # Tests
 neg.dummy          <- returns[1:(T-1)]<0
@@ -283,9 +271,7 @@ dot.com.plot2 <-ggplot() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position="top")
 
-jpeg("./fig/dot.com_plot.jpg", units="in", width=7, height=7, res=300)
 ggarrange(dot.com.plot1, dot.com.plot2,ncol = 1, nrow = 2)
-dev.off()
 
 sov.crisis <- dates >= as.Date('2011-05-01') & dates <= as.Date('2011-10-01') 
 
@@ -311,9 +297,7 @@ sov.crisis.plot2 <-ggplot() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position="top")
 
-jpeg("./fig/sov.crisis_plot.jpg", units="in", width=7, height=7, res=300)
 ggarrange(sov.crisis.plot1, sov.crisis.plot2, ncol = 1, nrow = 2)
-dev.off()
 
 cov.crisis <- dates >= as.Date('2020-03-01') & dates <= as.Date('2020-06-01') 
 
@@ -339,9 +323,7 @@ cov.crisis.plot2<-ggplot() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position="top")
 
-jpeg("./fig/cov.crisis_plot.jpg", units="in", width=7, height=7, res=300)
 ggarrange(cov.crisis.plot1, cov.crisis.plot2, ncol = 1, nrow = 2)
-dev.off()
 
 rus.crisis <- dates >= as.Date('2022-01-01') & dates <= as.Date('2022-04-01') 
 
@@ -367,9 +349,7 @@ rus.crisis.plot2<-ggplot() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position="top")
 
-jpeg("./fig/rus.crisis_plot.jpg", units="in", width=7, height=7, res=300)
 ggarrange(rus.crisis.plot1, rus.crisis.plot2, ncol = 1, nrow = 2)
-dev.off()
 
 rm(dot.com.plot1,dot.com.plot2,sov.crisis.plot1,sov.crisis.plot2,cov.crisis.plot1,cov.crisis.plot2,rus.crisis.plot1,rus.crisis.plot2)
 ```
@@ -420,7 +400,6 @@ ret2      <- returns[(TT+1):N]**2
 
 ## Plots:
 ```{r}
-jpeg("./fig/forecasting.jpg", units="in", width=7, height=7, res=300)
 
 ggplot() +
   geom_line(aes(x = dates.out, y = sqrt(252*var.a),colour='ARCH (11)'))+
@@ -437,7 +416,6 @@ ggplot() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position="top")
 
-dev.off()
 ```
 
 ## MSE & QL:
@@ -482,9 +460,7 @@ mse_3<-ggplot() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position="top")
 
-jpeg("./fig/mse.jpg", units="in", width=7, height=7, res=300)
 ggarrange(mse_1, mse_2, mse_3, ncol = 1, nrow = 3)
-dev.off()
 
 ql  <- cbind( ret2/var.a - log( ret2/var.a ) -1, ret2/var.g - log( ret2/var.g ) -1, ret2/var.r - log( ret2/var.r ) -1 )
 colnames(ql)<-c('ARCH (11)','GARCH (1,1)','Rolling Variance')
@@ -526,9 +502,7 @@ ql_3<-ggplot() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         legend.position="top")
 
-jpeg("./fig/ql.jpg", units="in", width=7, height=7, res=300)
 ggarrange(ql_1, ql_2, ql_3, ncol = 1, nrow = 3)
-dev.off()
 
 rm(mse_1,mse_2,mse_3,ql_1,ql_2,ql_3)
 ```

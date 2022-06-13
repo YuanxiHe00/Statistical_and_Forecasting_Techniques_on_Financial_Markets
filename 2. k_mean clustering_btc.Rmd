@@ -1,0 +1,259 @@
+---
+title: "K-Means Clustering"
+author: "Yuanxi He"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Importing all packages
+```{r, include=FALSE}
+### Cleanup:
+rm( list=ls() )
+
+### Libraries:
+library(ggplot2)
+library(tseries)
+library(moments)
+library(sandwich)
+library(lmtest)
+library(stats)
+library(ClusterR)
+library(cluster)
+library(dplyr)
+library(plotly)
+library(ggpubr)
+library(factoextra)
+library(NbClust)
+library("scatterplot3d")
+```
+
+## Initial setting
+```{r setup, warning=FALSE, message=FALSE}
+## Importing data:
+getSymbols(Symbols = "BTC-USD", auto_assign = TRUE, from = "1971-02-08")
+df<-as.data.frame(`BTC-USD`)
+rm(`BTC-USD`)
+
+save(df, file = "./data/btc.RData")
+load("./data/btc.RData")
+
+## Constructing variables:
+dates <- as.Date(as.character(rownames(df)),'%Y-%m-%d')
+T <- nrow(df)
+price <- df[,6]
+returns <- diff(log(price))*100
+```
+
+## Rolling: 
+```{r}
+### Window: week
+rollapply(returns, FUN = mean, width = 5, by.column = TRUE)->m
+rollapply(returns, FUN = sd, width = 5, by.column = TRUE)->std
+rollapply(returns, FUN = skewness, width = 5, by.column = TRUE)->skew
+rollapply(returns, FUN = kurtosis, width = 5, by.column = TRUE)->kurt
+
+rollw<-data.frame(dates = dates[6:T],
+                  na.omit(cbind(m,std,skew,kurt)))
+
+rm(m,std,skew,kurt)
+
+colMeans(rollw[,c(2:5)])
+```
+
+## Clustering (1 month):
+```{r}
+fviz_nbclust(rollw[,c(2:3)], kmeans, method = "wss") +
+    geom_vline(xintercept = 3, linetype = 2) +
+  labs(subtitle = "Elbow method")
+
+fviz_nbclust(rollw[,c(2:3)], kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")
+
+######### Week windows (m+std):
+set.seed(12345)
+res51 <- kmeans(rollw[,c(2:3)], centers = 2, nstart = 25)
+res51$centers
+y_kmeans51 <- as.character(res51$cluster)
+
+ggplot() +
+  geom_point(data = as.data.frame(rollw), mapping = aes(x = m, y = std, colour = y_kmeans51))+
+  geom_point(mapping = aes_string(x = res51$centers[,1], y = res51$centers[,2]), 
+               color = "darkblue", size = 4, alpha=0.7)+
+  ylab("Standard Deviation")+
+  xlab('Mean')+
+  scale_colour_brewer(palette = "Set2")+
+  theme_light()+
+  theme(legend.position="top")
+
+######### Week windows (m+std+skew):
+set.seed(12345)
+res52 <- kmeans(rollw[,c(2:4)], centers = 2, nstart = 25)
+res52$centers
+y_kmeans52 <- as.character(res52$cluster)
+
+colors <- c("#66C2A5", "#FC8D62", "#8DA0CB")
+colors <- colors[as.numeric(res52$cluster)]
+scatterplot3d(rollw[,2:4], pch = 16, color=colors, grid=TRUE)
+
+ggplot() +
+  geom_point(data = as.data.frame(rollw), mapping = aes(x = m, y = std, colour = y_kmeans52))+
+  geom_point(mapping = aes_string(x = res52$centers[,1], y = res52$centers[,2]), 
+               color = "darkblue", size = 4, alpha=0.7)+
+  ylab("Standard Deviation")+
+  xlab('Mean')+
+  scale_colour_brewer(palette = "Set2")+
+  theme_light()+
+  theme(legend.position="top")
+
+ggplot() +
+  geom_point(data = as.data.frame(rollw), mapping = aes(x = std, y = skew, colour = y_kmeans52))+
+  geom_point(mapping = aes_string(x = res52$centers[,2], y = res52$centers[,3]), 
+               color = "darkblue", size = 4, alpha=0.7)+
+  xlab("Standard Deviation")+
+  ylab('Skewness')+
+  scale_colour_brewer(palette = "Set2")+
+  theme_light()+
+  theme(legend.position="top")
+
+ggplot() +
+  geom_point(data = as.data.frame(rollw), mapping = aes(x = m, y = skew, colour = y_kmeans52))+
+  geom_point(mapping = aes_string(x = res52$centers[,1], y = res52$centers[,3]), 
+               color = "darkblue", size = 4, alpha=0.7)+
+  ylab("Skewness")+
+  xlab('Mean')+
+  scale_colour_brewer(palette = "Set2")+
+  theme_light()+
+  theme(legend.position="top")
+
+
+######### Week windows (m+std+skew+kurt):
+set.seed(11111)
+res53 <- kmeans(rollw[,c(2:5)], centers = 2, nstart = 25)
+res53$centers
+y_kmeans53 <- as.character(res53$cluster)
+
+colors <- c("#66C2A5", "#FC8D62", "#8DA0CB")
+colors <- colors[as.numeric(res53$cluster)]
+scatterplot3d(rollw[,c(2,3,4)], pch = 16, color=colors, grid=TRUE)
+scatterplot3d(rollw[,c(2,3,5)], pch = 16, color=colors, grid=TRUE)
+scatterplot3d(rollw[,c(2,4,5)], pch = 16, color=colors, grid=TRUE)
+scatterplot3d(rollw[,c(3,4,5)], pch = 16, color=colors, grid=TRUE)
+
+ggplot() +
+  geom_point(data = as.data.frame(rollw), mapping = aes(x = m, y = std, colour = y_kmeans53))+
+  geom_point(mapping = aes_string(x = res53$centers[,1], y = res53$centers[,2]), 
+               color = "darkblue", size = 4, alpha=0.7)+
+  ylab("Standard Deviation")+
+  xlab('Mean')+
+  scale_colour_brewer(palette = "Set2")+
+  theme_light()+
+  theme(legend.position="top")
+
+ggplot() +
+  geom_point(data = as.data.frame(rollw), mapping = aes(x = std, y = skew, colour = y_kmeans53))+
+  geom_point(mapping = aes_string(x = res53$centers[,2], y = res53$centers[,3]), 
+               color = "darkblue", size = 4, alpha=0.7)+
+  ylab("Skewness")+
+  xlab('Standard Deviation')+
+  scale_colour_brewer(palette = "Set2")+
+  theme_light()+
+  theme(legend.position="top")
+
+ggplot() +
+  geom_point(data = as.data.frame(rollw), mapping = aes(x = std, y = kurt, colour = y_kmeans53))+
+  geom_point(mapping = aes_string(x = res53$centers[,2], y = res53$centers[,4]), 
+               color = "darkblue", size = 4, alpha=0.7)+
+  ylab("Standard Deviation")+
+  xlab('Kurtosis')+
+  scale_colour_brewer(palette = "Set2")+
+  theme_light()+
+  theme(legend.position="top")
+
+ggplot() +
+  geom_point(data = as.data.frame(rollw), mapping = aes(x = skew, y = kurt, colour = y_kmeans53))+
+  geom_point(mapping = aes_string(x = res53$centers[,3], y = res53$centers[,4]), 
+               color = "darkblue", size = 4, alpha=0.7)+
+  ylab("Kurtosis")+
+  xlab('Skewness')+
+  scale_colour_brewer(palette = "Set2")+
+  theme_light()+
+  theme(legend.position="top")
+```
+
+## Classify by clusters (weekly):
+```{r}
+dd_rw<-cbind(rollw,clust_1=y_kmeans51,clust_2=y_kmeans52,clust_3=y_kmeans53,price=df[,6][c(6:T)])
+dd_rw<-dd_rw[,-c(2:5)]
+
+ggplot(dd_rw, aes(x=dates,y=price, group=clust_1, color=clust_1))+
+  geom_point(size=0.5)+
+  geom_bar(aes(y=price, fill=clust_1),stat="identity")+  
+  ylab("Bitcoin price")+
+  xlab("Dates")+
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y %b %d")+
+  theme_light()+
+  theme(
+    axis.title=element_text(size=10,face="bold"),
+    axis.text.x = element_text(angle=60, hjust=1),
+    legend.position="none")+
+  scale_colour_brewer(palette = "Set2")
+```
+
+## Strategy:
+```{r}
+buy=0
+sell=0
+profit=0
+normal_profit=0
+
+for (i in 1:dim(dd_rw)[1]) {   
+    if (i==1) { 
+      if (dd_rw$clust_1==1){
+        buy<-as.numeric(dd_rw[i,5])
+        }
+    } 
+    else if (dd_rw[i,2]==2 & dd_rw[i-1,2]==1) {
+        sell<-as.numeric(sell+dd_rw[i,5])
+    } 
+    else if (dd_rw[i,2]==1 & dd_rw[i-1,2]==2) {
+        buy<-as.numeric(buy+dd_rw[i,5])
+    } 
+    profit[i]<-as.vector(print(sell-buy))
+    normal_profit[i]<-as.vector(print(dd_rw[i,5]-dd_rw[1,5]))
+}
+
+tail(profit, n=1)
+tail(normal_profit, n=1)
+
+jpeg("./fig/rm_profit_btc.jpg", units="in", width=7, height=7, res=300)
+ggplot(dd_rw, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_1, color=clust_1), size=0.5) + 
+  geom_bar(aes(y=profit, fill=clust_1),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y %b %d")+
+  ylab("Euro Stoxx 50 price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),
+        axis.text.x = element_text(angle=60, hjust=1),
+        legend.position = 'none')
+dev.off()
+
+jpeg("./fig/rm_norm_profit_btc.jpg", units="in", width=7, height=7, res=300)
+ggplot(dd_rw, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_1, color=clust_1), size=0.5) + 
+  geom_bar(aes(y=normal_profit-profit, fill=clust_1),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),
+        axis.text.x = element_text(angle=60, hjust=1),
+        legend.position = 'none')
+dev.off()
+```

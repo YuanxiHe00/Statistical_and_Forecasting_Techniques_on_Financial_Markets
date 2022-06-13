@@ -1,0 +1,561 @@
+---
+title: "Volatlity Forecasting"
+author: "Yuanxi He"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+### Cleanup:
+rm( list=ls() )
+
+### Libraries:
+library(ggplot2)
+library(tseries)
+library(moments)
+library(sandwich)
+library(lmtest)
+library(stats)
+library(dplyr)
+library(plotly)
+library(ggpubr)
+library(fGarch)
+library(stargazer)
+source("./lib/utilities.R")
+```
+
+## Initial setting
+```{r setup, warning=FALSE, message=FALSE}
+## Importing data:
+load("./data/nasdaq.RData")
+
+## Constructing variables:
+dates <- as.Date(as.character(rownames(df)),'%Y-%m-%d')
+T <- nrow(df)
+price <- df$IXIC.Adjusted
+returns <- diff(log(price))*100
+ret_sq <- returns^2
+ret_abs <- abs(returns)
+```
+
+## In–Sample Analysis: 
+```{r}
+ret <- cbind.data.frame(dates[2:T],returns,ret_abs,ret_sq) ### Combine dates and return, and its derivatives and named as ret 
+colnames(ret)<-c("dates","returns","abs_returns","sq_returns")
+
+### Select the first 80%:
+ret_sample<-slice_head(ret, prop = 0.8) 
+TT<-length(ret_sample$dates)
+
+sample_df<- data.frame(dates=dates[2:TT],
+                       y=ret$abs_returns[2:TT] , 
+                       ret=ret$returns[1:(TT-1)],
+                       abs_ret=ret$abs_returns[1:(TT-1)],
+                       sq_ret=ret$sq_returns[1:(TT-1)])
+```
+
+## In-sample volatility analysis
+```{r}
+#ARCHLM test
+y<-returns[12:length(returns)]**2
+n<-length(y)
+X = cbind( 
+returns[11:(length(returns)-1)]**2, returns[10:(length(returns)-2)]**2, returns[9:(length(returns)-3)]**2,
+returns[8:(length(returns)-4)]**2,
+returns[7:(length(returns)-5)]**2,
+returns[6:(length(returns)-6)]**2,
+returns[5:(length(returns)-7)]**2,
+returns[4:(length(returns)-8)]**2,
+returns[3:(length(returns)-9)]**2,
+returns[2:(length(returns)-10)]**2,
+returns[1:(length(returns)-11)]**2)
+
+archlm = lm(y ~ X) 
+archlm.statistic <- n*summary( archlm )$r.squared
+archlm.p.value <- 1-pchisq(archlm.statistic,3)
+
+print(c(archlm.statistic, archlm.p.value))
+```
+
+## ARCH(11)
+```{r}
+arch11<-garch(returns,order=c(0,11))
+summary(arch11)
+
+par( mar=c(2,2,2,2) , mfrow=c(2,1) )
+
+#volatility
+sigma<-arch11$fitted.values[,1]
+
+#residuals
+z<-returns/sigma
+
+## GARCH
+garch11<-garch(returns,order=c(1,1))
+summary(garch11)
+
+#volatility
+sigmag<-garch11$fitted.values[,1]
+
+arch11_plot1<-ggplot() +
+  geom_line(mapping = aes(x = dates[1:T-1], y = sqrt(252)*sigma),col='tomato')+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Annualized Volatility")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+arch11_plot2<-ggplot() +
+  geom_line(mapping = aes(x = dates[1:T-1], y = returns),col='tomato')+
+  geom_line(mapping = aes(x = dates[1:T-1], y = 1.96*sigma),col='darkblue')+
+  geom_line(mapping = aes(x = dates[1:T-1], y = -1.96*sigma),col='darkblue')+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Returns (%)")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+garch11_plot1<-ggplot() +
+  geom_line(mapping = aes(x = dates[1:T-1], y = sqrt(252)*sigmag),col='tomato')+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Annualized Volatility")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+garch11_plot2<-ggplot() +
+  geom_line(mapping = aes(x = dates[1:T-1], y = returns),col='tomato')+
+  geom_line(mapping = aes(x = dates[1:T-1], y = 1.96*sigmag),col='darkblue')+
+  geom_line(mapping = aes(x = dates[1:T-1], y = -1.96*sigmag),col='darkblue')+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Returns (%)")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+jpeg("./fig/annv_ret_plot.jpg", units="in", width=7, height=7, res=300)
+ggarrange(arch11_plot1,garch11_plot1,arch11_plot2,garch11_plot2,ncol = 2, nrow = 2)
+dev.off()
+
+#residuals
+zg<-returns/sigmag
+
+jpeg("./fig/arch_res_plot.jpg", units="in", width=7, height=7, res=300)
+ggplot() +
+  geom_line(mapping = aes(x = dates[1:T-1], y = z),col='tomato')+
+  geom_hline(yintercept=0, color = "darkblue", lwd=0.5)+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("ARCH (11) residuals")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+dev.off()
+
+jpeg("./fig/garch_res_plot.jpg", units="in", width=7, height=7, res=300)
+ggplot() +
+  geom_line(mapping = aes(x = dates[1:T-1], y = zg),col='tomato')+
+  geom_hline(yintercept=0, color = "darkblue", lwd=0.5)+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("GARCH (1,1) residuals")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+dev.off()
+
+#residuals vs returns
+jpeg("./fig/residuals.jpg", units="in", width=7, height=7, res=300)
+
+par(mar=c(2,2,0.5,0.5), mfrow=c(2,2))
+
+qqnorm(z,col='tomato',main='')
+qqline(z,lwd=2,lty=3)
+legend('topleft',c('ARCH (11) residuals'))
+
+acf( abs(z[12:length(z)]) , lag.max=252 , ylim=c(-0.1,1) , lwd=5 , xlim=c(0,51) , col='tomato',main='')
+legend('topright',c('ARCH (11) residuals'))
+
+qqnorm(zg,col='tomato',main='')
+qqline(zg,lwd=2,lty=3)
+legend('topleft',c('GARCH(1,1) residuals'))
+
+acf( abs(zg[2:length(zg)]) , lag.max=252 , ylim=c(-0.1,1) , lwd=5 , xlim=c(0,51) , col='tomato',main='')
+legend('topright',c('GARCH (1,1) residuals'))
+
+dev.off()
+
+jb.r <- jarque.test(returns)
+jb.z <- jarque.test(z[12:length(returns)])
+jb.zg <- jarque.test(zg[2:length(returns)])
+print(jb.r)
+print(jb.z)
+print(jb.zg)
+
+rm(arch11_plot,arch11_plot1,arch11_plot2,garch11_plot1,garch11_plot2,arch_res,garch_res)
+```
+
+## ASYMMETRIC VOLATILITY
+```{r}
+r.plus  <- returns[1:(T-1)]*(returns[1:(T-1)]>0) 
+r.minus <- returns[1:(T-1)]*(returns[1:(T-1)]<0) 
+levreg  <- lm( abs(returns[2:T]) ~ 0+r.plus + r.minus )
+
+asy.1<-ggplot() +
+  geom_point(mapping = aes(x = returns[1:(T-1)], y = abs(returns[2:T])),col='tomato', size=0.5)+
+  geom_abline(intercept=0 , slope=coef(levreg)['r.plus']  , col='darkblue' , lwd=1 )+
+  geom_abline(intercept=0 , slope=coef(levreg)['r.minus'] , col='darkblue' , lwd=1 )+
+  scale_y_continuous(expand = c(0, 0.05), limits = c(0, 15))+
+  ylab("Absolute returns")+
+  xlab('Lagged returns')+
+  theme_light()
+
+# With GARCH
+zg.plus  <- zg[1:(T-1)]*(zg[1:(T-1)]>0) 
+zg.minus <- zg[1:(T-1)]*(zg[1:(T-1)]<0) 
+levreg_garch  <- lm( abs(zg[2:T]) ~ 0+zg.plus + zg.minus )
+
+asy.2<-ggplot() +
+  geom_point(mapping = aes(x = zg[1:(T-1)], y = abs(zg[2:T])),col='tomato', size=0.5)+
+  geom_abline(intercept=0 , slope=coef(levreg_garch)['zg.plus'] , col='darkblue' , lwd=1 )+
+  geom_abline(intercept=0 , slope=coef(levreg_garch)['zg.minus'] , col='darkblue' , lwd=1 )+
+  ylab("Absolute standardized residuals")+
+  xlab('Lagged standardized residuals')+
+  scale_y_continuous(expand = c(0, 0.05), limits = c(0, 8))+
+  theme_light()
+
+jpeg("./fig/asymmetric.jpg", units="in", width=7, height=7, res=300)
+ggarrange(asy.1, asy.2,ncol = 1, nrow = 2)
+dev.off()
+
+# Tests
+neg.dummy          <- returns[1:(T-1)]<0
+neg_sign_bias.test <- lm( zg[2:T]**2 ~ neg.dummy )
+
+summary( neg_sign_bias.test )
+
+neg.size           <- returns[1:(T-1)]*(returns[1:(T-1)]<0)
+neg_size_bias.test <- lm( zg[2:T]**2 ~ neg.size )
+
+summary( neg_size_bias.test )
+
+
+stargazer(neg_sign_bias.test,neg_size_bias.test,title="Asymmetric Effect Tests", align=TRUE,dep.var.labels=c("GARCH(1,1)"), covariate.labels=c("Negative Sign", "Negative Size"), omit.stat=c("LL","ser","f"),no.space=TRUE, out='negative.htm') 
+
+```
+
+## Moments
+```{r}
+ggplot() +
+  geom_line(aes(x = dates[1:(T-1)], y = sqrt(252)*sigma,colour='ARCH (11)'))+
+  geom_line(aes(x = dates[1:(T-1)], y = sqrt(252)*sigmag , colour='GARCH (1,1)'))+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Annualized Volatility")+
+  xlab('Dates')+
+  scale_color_manual(name='ARCH models',
+                     breaks=c('ARCH (11)', 'GARCH (1,1)'),
+                     values=c('ARCH (11)'='darkblue', 'GARCH (1,1)'='darkorange'))+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position="top")
+
+dot.com <- dates >= as.Date('1997-01-01') & dates <= as.Date('2001-01-01') 
+
+dot.com.plot1 <-ggplot() +
+  geom_line(aes(x = dates[dot.com], y = cumsum( returns[dot.com] )),colour='tomato')+
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y %b %d")+
+  ylab("Cumulative returns")+
+  xlab('Dates')+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position="top")
+
+dot.com.plot2 <-ggplot() +
+  geom_line(aes(x = dates[dot.com], y = sqrt(252)*sigma[dot.com],colour='ARCH (11)'))+
+  geom_line(aes(x = dates[dot.com], y = sqrt(252)*sigmag[dot.com] , colour='GARCH (1,1)'))+
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y %b %d")+
+  ylab("Annualized Volatility")+
+  xlab('Dates')+
+  scale_color_manual(name='ARCH models',
+                     breaks=c('ARCH (11)', 'GARCH (1,1)'),
+                     values=c('ARCH (11)'='darkblue', 'GARCH (1,1)'='darkorange'))+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position="top")
+
+jpeg("./fig/dot.com_plot.jpg", units="in", width=7, height=7, res=300)
+ggarrange(dot.com.plot1, dot.com.plot2,ncol = 1, nrow = 2)
+dev.off()
+
+sov.crisis <- dates >= as.Date('2011-05-01') & dates <= as.Date('2011-10-01') 
+
+sov.crisis.plot1 <-ggplot() +
+  geom_line(aes(x = dates[sov.crisis], y = cumsum( returns[sov.crisis] )),colour='tomato')+
+  scale_x_date(date_breaks = "1 month", date_labels = "%Y %b %d")+
+  ylab("Cumulative returns")+
+  xlab('Dates')+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position="top")
+
+sov.crisis.plot2 <-ggplot() +
+  geom_line(aes(x = dates[sov.crisis], y = sqrt(252)*sigma[sov.crisis],colour='ARCH (11)'))+
+  geom_line(aes(x = dates[sov.crisis], y = sqrt(252)*sigmag[sov.crisis] , colour='GARCH (1,1)'))+
+  scale_x_date(date_breaks = "1 month", date_labels = "%Y %b %d")+
+  ylab("Annualized Volatility")+
+  xlab('Dates')+
+  scale_color_manual(name='ARCH models',
+                     breaks=c('ARCH (11)', 'GARCH (1,1)'),
+                     values=c('ARCH (11)'='darkblue', 'GARCH (1,1)'='darkorange'))+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position="top")
+
+jpeg("./fig/sov.crisis_plot.jpg", units="in", width=7, height=7, res=300)
+ggarrange(sov.crisis.plot1, sov.crisis.plot2, ncol = 1, nrow = 2)
+dev.off()
+
+cov.crisis <- dates >= as.Date('2020-03-01') & dates <= as.Date('2020-06-01') 
+
+cov.crisis.plot1<-ggplot() +
+  geom_line(aes(x = dates[cov.crisis], y = cumsum( returns[cov.crisis] )),colour='tomato')+
+  scale_x_date(date_breaks = "1 month")+
+  ylab("Cumulative returns")+
+  xlab('Dates')+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position="top")
+
+cov.crisis.plot2<-ggplot() +
+  geom_line(aes(x = dates[cov.crisis], y = sqrt(252)*sigma[cov.crisis],colour='ARCH (11)'))+
+  geom_line(aes(x = dates[cov.crisis], y = sqrt(252)*sigmag[cov.crisis] , colour='GARCH (1,1)'))+
+  scale_x_date(date_breaks = "1 month", date_labels = "%Y %b %d")+
+  ylab("Annualized Volatility")+
+  xlab('Dates')+
+  scale_color_manual(name='ARCH models',
+                     breaks=c('ARCH (11)', 'GARCH (1,1)'),
+                     values=c('ARCH (11)'='darkblue', 'GARCH (1,1)'='darkorange'))+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position="top")
+
+jpeg("./fig/cov.crisis_plot.jpg", units="in", width=7, height=7, res=300)
+ggarrange(cov.crisis.plot1, cov.crisis.plot2, ncol = 1, nrow = 2)
+dev.off()
+
+rus.crisis <- dates >= as.Date('2022-01-01') & dates <= as.Date('2022-04-01') 
+
+rus.crisis.plot1<-ggplot() +
+  geom_line(aes(x = dates[rus.crisis], y = cumsum( returns[rus.crisis] )),colour='tomato')+
+  scale_x_date(date_breaks = "1 month")+
+  ylab("Cumulative returns")+
+  xlab('Dates')+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position="top")
+
+rus.crisis.plot2<-ggplot() +
+  geom_line(aes(x = dates[rus.crisis], y = sqrt(252)*sigma[rus.crisis],colour='ARCH (11)'))+
+  geom_line(aes(x = dates[rus.crisis], y = sqrt(252)*sigmag[rus.crisis] , colour='GARCH (1,1)'))+
+  scale_x_date(date_breaks = "1 month", date_labels = "%Y %b %d")+
+  ylab("Annualized Volatility")+
+  xlab('Dates')+
+  scale_color_manual(name='ARCH models',
+                     breaks=c('ARCH (11)', 'GARCH (1,1)'),
+                     values=c('ARCH (11)'='darkblue', 'GARCH (1,1)'='darkorange'))+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position="top")
+
+jpeg("./fig/rus.crisis_plot.jpg", units="in", width=7, height=7, res=300)
+ggarrange(rus.crisis.plot1, rus.crisis.plot2, ncol = 1, nrow = 2)
+dev.off()
+
+rm(dot.com.plot1,dot.com.plot2,sov.crisis.plot1,sov.crisis.plot2,cov.crisis.plot1,cov.crisis.plot2,rus.crisis.plot1,rus.crisis.plot2)
+```
+
+## Forecasting:
+```{r}
+N <- length(ret$dates)
+
+var.a = rep( 0 , N-TT )
+var.g = rep( 0 , N-TT )
+var.r = rep( 0,  N-TT )
+
+for( t in TT:(N-1) ){
+     
+     cat('.')
+
+     ret.in  <- returns[ 1:t ]
+     ret.out <- returns[ (t+1):N ]
+     
+     # fit
+     garch11     <- garch(ret.in, order = c(1,1))
+     vol.garch   <- garch11$fitted.values[,1]
+     theta.garch <- coef(garch11)
+     var.garch   <- theta.garch['a0'] + theta.garch['a1']*tail(ret.in,1)**2 + theta.garch['b1']*tail(vol.garch,1)**2
+     
+     var.roll <- var(ret.in[ (length(ret.in)-504):length(ret.in) ])
+     
+     arch11     <- garch(ret.in,order=c(0,11))
+     vol.arch   <- arch11$fitted.values[,1]
+     theta.arch <- coef(arch11)
+     var.arch   <- theta.arch['a0'] + theta.arch['a1']*tail(ret.in,1)**2 +
+       theta.arch['a2']*tail(ret.in,2)[1]**2 +theta.arch['a3']*tail(ret.in,3)[1]**2 +
+       theta.arch['a4']*tail(ret.in,4)[1]**2 + theta.arch['a5']*tail(ret.in,5)[1]**2 + 
+       theta.arch['a6']*tail(ret.in,6)[1]**2 + theta.arch['a7']*tail(ret.in,7)[1]**2 +
+       theta.arch['a8']*tail(ret.in,8)[1]**2 + theta.arch['a9']*tail(ret.in,9)[1]**2 +
+       theta.arch['a10']*tail(ret.in,10)[1]**2 + theta.arch['a11']*tail(ret.in,11)[1]**2
+     
+     # forecast
+     var.g[t-TT+1] <- var.garch;
+     var.r[t-TT+1] <- var.roll; 
+     var.a[t-TT+1] <- var.arch  
+}
+
+
+dates.out <- dates[ (TT+1):N ]
+ret2      <- returns[(TT+1):N]**2
+```
+
+## Plots:
+```{r}
+jpeg("./fig/forecasting.jpg", units="in", width=7, height=7, res=300)
+
+ggplot() +
+  geom_line(aes(x = dates.out, y = sqrt(252*var.a),colour='ARCH (11)'))+
+  geom_line(aes(x = dates.out, y = sqrt(252*var.g) , colour='GARCH (1,1)'))+
+  geom_line(aes(x = dates.out, y = sqrt(252*var.r) , colour='Rolling Variance'))+
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y %b %d")+
+  ylab("Annualized Volatility")+
+  xlab('Dates')+
+  scale_color_manual(name='ARCH models',
+                     breaks=c('ARCH (11)', 'GARCH (1,1)','Rolling Variance'),
+                     values=c('ARCH (11)'='darkblue', 'GARCH (1,1)'='darkorange',
+                              'Rolling Variance'='darkolivegreen'))+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position="top")
+
+dev.off()
+```
+
+## MSE & QL:
+```{r}
+mse <- cbind((ret2-var.a)**2, (ret2-var.g)**2 , (ret2-var.r)**2 )
+colnames(mse)<-c('ARCH (11)','GARCH (1,1)','Rolling Variance')
+
+mse_1<-ggplot() +
+  geom_line(aes(x = dates.out, y = mse[,1], colour='ARCH (11)'))+
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y %b %d")+
+  ylab("Mean Squared Errors")+
+  xlab('Dates')+
+  scale_color_manual(name='ARCH models',
+                     breaks=c('ARCH (11)'),
+                     values=c('ARCH (11)'='darkblue'))+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position="top")
+
+mse_2<-ggplot() +
+  geom_line(aes(x = dates.out, y = mse[,2], colour='GARCH (1,1)'))+
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y %b %d")+
+  ylab("Mean Squared Errors")+
+  xlab('Dates')+
+  scale_color_manual(name='ARCH models',
+                     breaks=c('GARCH (1,1)'),
+                     values=c('GARCH (1,1)'='darkorange'))+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position="top")
+
+
+mse_3<-ggplot() +
+  geom_line(aes(x = dates.out, y = mse[,3], colour='Rolling Variance'))+
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y %b %d")+
+  ylab("Mean Squared Errors")+
+  xlab('Dates')+
+  scale_color_manual(name='ARCH models',
+                     breaks=c('Rolling Variance'),
+                     values=c('Rolling Variance'='darkolivegreen'))+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position="top")
+
+jpeg("./fig/mse.jpg", units="in", width=7, height=7, res=300)
+ggarrange(mse_1, mse_2, mse_3, ncol = 1, nrow = 3)
+dev.off()
+
+ql  <- cbind( ret2/var.a - log( ret2/var.a ) -1, ret2/var.g - log( ret2/var.g ) -1, ret2/var.r - log( ret2/var.r ) -1 )
+colnames(ql)<-c('ARCH (11)','GARCH (1,1)','Rolling Variance')
+ql[!is.finite(ql)] <- 0
+
+ql_1<-ggplot() +
+  geom_line(aes(x = dates.out, y = ql[,1], colour='ARCH (11)'))+
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y %b %d")+
+  ylab("Quasi-Likelihood Losses")+
+  xlab('Dates')+
+  scale_color_manual(name='ARCH models',
+                     breaks=c('ARCH (11)'),
+                     values=c('ARCH (11)'='darkblue'))+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position="top")
+
+ql_2<-ggplot() +
+  geom_line(aes(x = dates.out, y = ql[,2], colour='GARCH (1,1)'))+
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y %b %d")+
+  ylab("Quasi-Likelihood Losses")+
+  xlab('Dates')+
+  scale_color_manual(name='ARCH models',
+                     breaks=c('GARCH (1,1)'),
+                     values=c('GARCH (1,1)'='darkorange'))+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position="top")
+
+ql_3<-ggplot() +
+  geom_line(aes(x = dates.out, y = ql[,3], colour='Rolling Variance'))+
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y %b %d")+
+  ylab("Quasi-Likelihood Losses")+
+  xlab('Dates')+
+  scale_color_manual(name='ARCH models',
+                     breaks=c('Rolling Variance'),
+                     values=c('Rolling Variance'='darkolivegreen'))+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position="top")
+
+jpeg("./fig/ql.jpg", units="in", width=7, height=7, res=300)
+ggarrange(ql_1, ql_2, ql_3, ncol = 1, nrow = 3)
+dev.off()
+
+rm(mse_1,mse_2,mse_3,ql_1,ql_2,ql_3)
+```
+
+```{r}
+options(scipen = 999)
+
+L <- rbind( colMeans(ql) , colMeans( mse ) )
+dimnames(L)[[1]]<-list('QL','MSE')
+
+stargazer(t(L), type = "text", title='', digits=3, out="losses.htm", flip=TRUE) 
+
+DM <- matrix( 0 , 2 , 2)
+for( m in 1:2){
+    d = ql[,m] - ql[,3]
+    DM[1,m] = mean( d )/sqrt( lrvar(d) )
+    
+    d = mse[,m] - mse[,3]
+    DM[2,m] = mean( d )/sqrt( lrvar(d) )
+}
+ 
+DM.pval <- 1-pchisq( DM**2 , 1 )
+
+DM<-rbind(DM[1,],DM.pval[1,],DM[2,],DM.pval[2,])
+
+colnames(DM)=c('ARCH (6)','GARCH (1,1)')
+rownames(DM)=c('DM stat (QL)','p_val_QL','DM stat (MSE)','p_val_MSE')
+
+stargazer(t(DM), type = "text", title='', digits=3, out="dm.htm", flip=TRUE) 
+```

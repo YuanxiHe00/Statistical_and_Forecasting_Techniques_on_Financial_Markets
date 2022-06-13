@@ -1,0 +1,1561 @@
+---
+title: "K-Means Clustering"
+author: "Yuanxi He"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+## Importing all packages
+```{r, include=FALSE}
+### Cleanup:
+rm( list=ls() )
+
+### Libraries:
+library(ggplot2)
+library(tseries)
+library(moments)
+library(sandwich)
+library(lmtest)
+library(stats)
+library(ClusterR)
+library(cluster)
+library(dplyr)
+library(plotly)
+library(ggpubr)
+library(factoextra)
+library(NbClust)
+library("scatterplot3d")
+```
+
+## Initial setting
+```{r setup, warning=FALSE, message=FALSE}
+## Importing data:
+getSymbols(Symbols = "BP", auto_assign = TRUE, from = "1971-02-08")
+df<-as.data.frame(BP)
+rm(BP)
+
+save(df, file = "./data/bp.RData")
+
+load("./data/bp.RData")
+
+## Constructing variables:
+dates <- as.Date(as.character(rownames(df)),'%Y-%m-%d')
+T <- nrow(df)
+price <- df[,6]
+returns <- diff(log(price))*100
+```
+
+
+## Rolling: 
+```{r}
+### 5 years window:
+rollapply(returns, FUN = mean, width = 252*5, by.column = TRUE)->m
+rollapply(returns, FUN = sd, width = 252*5, by.column = TRUE)->std
+rollapply(returns, FUN = skewness, width = 252*5, by.column = TRUE)->skew
+rollapply(returns, FUN = kurtosis, width = 252*5, by.column = TRUE)->kurt
+
+roll5y<-data.frame(dates = dates[1261:T],
+                  na.omit(cbind(m,std,skew,kurt)))
+
+rm(m,std,skew,kurt)
+
+colMeans(roll5y[,c(2:5)])
+
+### Year window:
+rollapply(returns, FUN = mean, width = 252, by.column = TRUE)->m
+rollapply(returns, FUN = sd, width = 252, by.column = TRUE)->std
+rollapply(returns, FUN = skewness, width = 252, by.column = TRUE)->skew
+rollapply(returns, FUN = kurtosis, width = 252, by.column = TRUE)->kurt
+
+rolly<-data.frame(dates = dates[253:T],
+                  na.omit(cbind(m,std,skew,kurt)))
+
+rm(m,std,skew,kurt)
+
+colMeans(rolly[,c(2:5)])
+
+### Half year window:
+rollapply(returns, FUN = mean, width = 126, by.column = TRUE)->m
+rollapply(returns, FUN = sd, width = 126, by.column = TRUE)->std
+rollapply(returns, FUN = skewness, width = 126, by.column = TRUE)->skew
+rollapply(returns, FUN = kurtosis, width = 126, by.column = TRUE)->kurt
+
+rollhy<-data.frame(dates = dates[127:T],
+                  na.omit(cbind(m,std,skew,kurt)))
+
+rm(m,std,skew,kurt)
+
+colMeans(rollhy[,c(2:5)])
+
+### Month window:
+rollapply(returns, FUN = mean, width = 20, by.column = TRUE)->m
+rollapply(returns, FUN = sd, width = 20, by.column = TRUE)->std
+rollapply(returns, FUN = skewness, width = 20, by.column = TRUE)->skew
+rollapply(returns, FUN = kurtosis, width = 20, by.column = TRUE)->kurt
+
+rollm<-data.frame(dates = dates[21:T],
+                  na.omit(cbind(m,std,skew,kurt)))
+
+rm(m,std,skew,kurt)
+
+colMeans(rollm[,c(2:5)])
+
+### Window: week
+rollapply(returns, FUN = mean, width = 5, by.column = TRUE)->m
+rollapply(returns, FUN = sd, width = 5, by.column = TRUE)->std
+rollapply(returns, FUN = skewness, width = 5, by.column = TRUE)->skew
+rollapply(returns, FUN = kurtosis, width = 5, by.column = TRUE)->kurt
+
+rollw<-data.frame(dates = dates[6:T],
+                  na.omit(cbind(m,std,skew,kurt)))
+
+rm(m,std,skew,kurt)
+
+colMeans(rollw[,c(2:5)])
+```
+
+### Plots:
+```{r}
+####### 5 Years:
+r5y_mean<-ggplot() +
+  geom_line(mapping = aes(x = dates[1261:T], y = roll5y[,2]),col='tomato')+
+  geom_hline(yintercept=0, color = "darkblue")+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Mean")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+r5y_std<-ggplot() +
+  geom_line(mapping = aes(x = dates[1261:T], y = roll5y[,3]),col='tomato')+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Standard Deviation")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+r5y_skew<-ggplot() +
+  geom_line(mapping = aes(x = dates[1261:T], y = roll5y[,4]),col='tomato')+
+  geom_hline(yintercept=0, color = "darkblue")+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Skewness")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+r5y_kurt<-ggplot() +
+  geom_line(mapping = aes(x = dates[1261:T], y = roll5y[,5]),col='tomato')+
+  geom_hline(yintercept=3, color = "darkblue")+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Kurtosis")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+jpeg("./fig/5YearsRolling_nasdaq.jpg", units="in", width=7, height=7, res=300)
+
+ggarrange(r5y_mean, r5y_std, r5y_skew,r5y_kurt,
+          ncol = 2, nrow = 2)
+dev.off()
+
+####### Yearly:
+ry_mean<-ggplot() +
+  geom_line(mapping = aes(x = dates[253:T], y = rolly[,2]),col='tomato')+
+  geom_hline(yintercept=0, color = "darkblue")+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Mean")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ry_std<-ggplot() +
+  geom_line(mapping = aes(x = dates[253:T], y = rolly[,3]),col='tomato')+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Standard Deviation")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ry_skew<-ggplot() +
+  geom_line(mapping = aes(x = dates[253:T], y = rolly[,4]),col='tomato')+
+  geom_hline(yintercept=0, color = "darkblue")+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Skewness")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ry_kurt<-ggplot() +
+  geom_line(mapping = aes(x = dates[253:T], y = rolly[,5]),col='tomato')+
+  geom_hline(yintercept=3, color = "darkblue")+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Kurtosis")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+jpeg("./fig/YearlyRolling_nasdaq.jpg", units="in", width=7, height=7, res=300)
+
+ggarrange(ry_mean, ry_std, ry_skew,ry_kurt,
+          ncol = 2, nrow = 2)
+dev.off()
+
+####### Half year:
+rhy_mean<-ggplot() +
+  geom_line(mapping = aes(x = dates[127:T], y = rollhy[,2]),col='tomato')+
+  geom_hline(yintercept=0, color = "darkblue")+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Mean")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+rhy_std<-ggplot() +
+  geom_line(mapping = aes(x = dates[127:T], y = rollhy[,3]),col='tomato')+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Standard Deviation")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+rhy_skew<-ggplot() +
+  geom_line(mapping = aes(x = dates[127:T], y = rollhy[,4]),col='tomato')+
+  geom_hline(yintercept=0, color = "darkblue")+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Skewness")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+rhy_kurt<-ggplot() +
+  geom_line(mapping = aes(x = dates[127:T], y = rollhy[,5]),col='tomato')+
+  geom_hline(yintercept=3, color = "darkblue")+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Kurtosis")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+jpeg("./fig/HalfYearRolling_nasdaq.jpg", units="in", width=7, height=7, res=300)
+
+ggarrange(rhy_mean, rhy_std, rhy_skew,rhy_kurt,
+          ncol = 2, nrow = 2)
+dev.off()
+
+####### Monthly:
+rm_mean<-ggplot() +
+  geom_line(mapping = aes(x = dates[21:T], y = rollm[,2]),col='tomato')+
+  geom_hline(yintercept=0, color = "darkblue")+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Mean")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+rm_std<-ggplot() +
+  geom_line(mapping = aes(x = dates[21:T], y = rollm[,3]),col='tomato')+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Standard Deviation")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+rm_skew<-ggplot() +
+  geom_line(mapping = aes(x = dates[21:T], y = rollm[,4]),col='tomato')+
+  geom_hline(yintercept=0, color = "darkblue")+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Skewness")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+rm_kurt<-ggplot() +
+  geom_line(mapping = aes(x = dates[21:T], y = rollm[,5]),col='tomato')+
+  geom_hline(yintercept=3, color = "darkblue")+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Kurtosis")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+jpeg("./fig/MonthlyRolling_nasdaq.jpg", units="in", width=7, height=7, res=300)
+
+ggarrange(rm_mean, rm_std, rm_skew,rm_kurt,
+          ncol = 2, nrow = 2)
+dev.off()
+
+####### Weekly:
+rw_mean<-ggplot() +
+  geom_line(mapping = aes(x = dates[6:T], y = rollw[,2]),col='tomato')+
+  geom_hline(yintercept=0, color = "darkblue")+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Mean")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+rw_std<-ggplot() +
+  geom_line(mapping = aes(x = dates[6:T], y = rollw[,3]),col='tomato')+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Standard Deviation")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+rw_skew<-ggplot() +
+  geom_line(mapping = aes(x = dates[6:T], y = rollw[,4]),col='tomato')+
+  geom_hline(yintercept=0, color = "darkblue")+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Skewness")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+rw_kurt<-ggplot() +
+  geom_line(mapping = aes(x = dates[6:T], y = rollw[,5]),col='tomato')+
+  geom_hline(yintercept=3, color = "darkblue")+
+  scale_x_date(date_breaks = "5 year", date_labels = "%Y %b %d")+
+  ylab("Kurtosis")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+jpeg("./fig/WeeklyRolling_nasdaq.jpg", units="in", width=7, height=7, res=300)
+
+ggarrange(rw_mean, rw_std, rw_skew,rw_kurt,
+          ncol = 2, nrow = 2)
+dev.off()
+
+rm(r5y_mean,r5y_std,r5y_skew,r5y_kurt,rhy_mean,rhy_std,rhy_skew,rhy_kurt,ry_mean,ry_std,ry_skew,ry_kurt,rm_mean,rm_std,rm_skew,rm_kurt,rw_mean,rw_std,rw_skew,rw_kurt)
+```
+
+
+
+## Clustering (Determining k):
+```{r}
+### Determining the optimal k:
+
+# Elbow method
+jpeg("./fig/elbow_rm.jpg", units="in", width=7, height=7, res=300)
+fviz_nbclust(rollm[,c(2:3)], kmeans, method = "wss") +
+    geom_vline(xintercept = 3, linetype = 2) +
+  labs(subtitle = "Elbow method")
+dev.off()
+
+# Silhouette method
+fviz_nbclust(roll5y[,c(2:3)], kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")
+
+fviz_nbclust(rolly[,c(2:3)], kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")
+
+fviz_nbclust(rollhy[,c(2:3)], kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")
+
+jpeg("./fig/silhouette_rm.jpg", units="in", width=7, height=7, res=300)
+
+fviz_nbclust(rollm[,c(2:3)], kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")
+
+dev.off()
+
+fviz_nbclust(rollw[,c(2:3)], kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")
+
+###########
+
+fviz_nbclust(roll5y[,c(2:4)], kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")
+
+fviz_nbclust(rolly[,c(2:4)], kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")
+
+fviz_nbclust(rollhy[,c(2:4)], kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")
+
+fviz_nbclust(rollm[,c(2:4)], kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")
+
+fviz_nbclust(rollw[,c(2:4)], kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")                          
+
+###########
+
+fviz_nbclust(roll5y[,c(2:5)], kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")
+
+fviz_nbclust(rolly[,c(2:5)], kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")
+
+fviz_nbclust(rollhy[,c(2:5)], kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")
+
+fviz_nbclust(rollm[,c(2:5)], kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")
+
+fviz_nbclust(rollw[,c(2:5)], kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")
+```
+
+
+## Clustering (5 years):
+```{r}
+######### Year windows (m+std):
+set.seed(1111)
+res11 <- kmeans(roll5y[,c(2:3)], centers = 2, nstart = 25)
+res11$centers
+y_kmeans11 <- as.character(res11$cluster)
+
+ggplot() +
+  geom_point(data = as.data.frame(roll5y), mapping = aes(x = m, y = std, colour = y_kmeans11))+
+  geom_point(mapping = aes_string(x = res11$centers[,1], y = res11$centers[,2]), 
+               color = "darkblue", size = 4, alpha=0.7)+
+  theme_light()
+
+######### Year windows (m+std+skew):
+set.seed(1111111)
+res12 <- kmeans(roll5y[,c(2:4)], centers = 2, nstart = 25)
+res12$centers
+y_kmeans12 <- as.character(res12$cluster)
+
+######### Year windows (m+std+skew+kurt):
+set.seed(123456)
+res13 <- kmeans(roll5y[,c(2:5)], centers = 2, nstart = 25)
+res13$centers
+y_kmeans13 <- as.character(res13$cluster)
+```
+
+## Clustering (1 year):
+```{r}
+######### Year windows (m+std):
+set.seed(12345)
+res21 <- kmeans(rolly[,c(2:3)], centers = 2, nstart = 25)
+res21$centers
+y_kmeans21 <- as.character(res21$cluster)
+
+######### Year windows (m+std+skew):
+set.seed(12345678)
+res22 <- kmeans(rolly[,c(2:4)], centers = 2, nstart = 25)
+res22$centers
+y_kmeans22 <- as.character(res22$cluster)
+
+######### Year windows (m+std+skew+kurt):
+set.seed(12345)
+res23 <- kmeans(rolly[,c(2:5)], centers = 2, nstart = 25)
+res23$centers
+y_kmeans23 <- as.character(res23$cluster)
+```
+
+## Clustering (half year):
+```{r}
+######### Year windows (m+std):
+set.seed(11111)
+res31 <- kmeans(rollhy[,c(2:3)], centers = 2, nstart = 25)
+res31$centers
+y_kmeans31 <- as.character(res31$cluster)
+
+######### Year windows (m+std+skew):
+set.seed(1111)
+res32 <- kmeans(rollhy[,c(2:4)], centers = 2, nstart = 25)
+res32$centers
+y_kmeans32 <- as.character(res32$cluster)
+
+######### Year windows (m+std+skew+kurt):
+set.seed(12345)
+res33 <- kmeans(rollhy[,c(2:5)], centers = 2, nstart = 25)
+res33$centers
+y_kmeans33 <- as.character(res33$cluster)
+```
+
+## Clustering (1 month):
+```{r}
+######### Month windows (m+std):
+set.seed(1234)
+res41 <- kmeans(rollm[,c(2:3)], centers = 2, nstart = 25)
+res41$centers
+y_kmeans41 <- as.character(res41$cluster)
+
+jpeg("./fig/rm_clust_m+std.jpg", units="in", width=7, height=7, res=300)
+
+ggplot() +
+  geom_point(data = rollm, mapping = aes(x = m, y = std, colour = y_kmeans41))+
+  geom_point(mapping = aes_string(x = res41$centers[,1], y = res41$centers[,2]), color = "darkblue", size = 4, alpha=0.7)+
+  ylab("Standard Deviation")+
+  xlab('Mean')+
+  scale_colour_brewer(palette = "Set2")+
+  theme_light()+
+  theme(legend.position="top")
+  
+dev.off()
+
+######### Month windows (m+std+skew):
+set.seed(11111)
+res42 <- kmeans(rollm[,c(2:4)], centers = 2, nstart = 25)
+res42$centers
+y_kmeans42 <- as.character(res42$cluster)
+
+######### Month windows (m+std+skew+kurt):
+set.seed(12345)
+res43 <- kmeans(rollm[,c(2:5)], centers = 2, nstart = 25)
+res43$centers
+y_kmeans43 <- 
+  as.character(res43$cluster)
+```
+
+## Clustering (1 week):
+```{r}
+######### Week windows (m+std):
+set.seed(1111)
+res51 <- kmeans(rollw[,c(2:3)], centers = 2, nstart = 25)
+res51$centers
+y_kmeans51 <- as.character(res51$cluster)
+
+######### Week windows (m+std+skew):
+set.seed(123)
+res52 <- kmeans(rollw[,c(2:4)], centers = 2, nstart = 25)
+res52$centers
+y_kmeans52 <- as.character(res52$cluster)
+
+######### Month windows (m+std+skew+kurt):
+set.seed(11111)
+res53 <- kmeans(rollw[,c(2:5)], centers = 2, nstart = 25)
+res53$centers
+y_kmeans53 <- as.character(res53$cluster)
+```
+
+
+## Classify by clusters (5 yearly):
+```{r}
+dd_r5y<-cbind(roll5y,clust_1=y_kmeans11,clust_2=y_kmeans12,clust_3=y_kmeans13,price=df[,6][c(1261:T)])
+dd_r5y<-dd_r5y[,-c(2:5)]
+
+ggplot(dd_r5y, aes(x=dates,y=price, group=clust_1, color=clust_1))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price")+
+  xlab("Dates")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))+
+  scale_colour_brewer(palette = "Set2")
+
+##########################
+
+ggplot(dd_r5y, aes(x=dates,y=price, group=clust_2, color=clust_2))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price")+
+  xlab("Dates")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))+
+  scale_colour_brewer(palette = "Set2")
+
+##########################
+
+ggplot(dd_r5y, aes(x=dates,y=price, group=clust_3, color=clust_3))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price")+
+  xlab("Dates")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))+
+  scale_colour_brewer(palette = "Set2")
+
+##########################
+
+ggplot(dd_r5y, aes(x=dates,y=log(price), group=clust_1, color=clust_1))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price with log")+
+  xlab("Dates")+
+  theme(axis.title=element_text(size=10,face="bold"))+
+  theme_light()+
+  scale_colour_brewer(palette = "Set2")
+
+ggplot(dd_r5y, aes(x=dates,y=log(price), group=clust_2, color=clust_2))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price with log")+
+  xlab("Dates")+
+  theme(axis.title=element_text(size=10,face="bold"))+
+  theme_light()+
+  scale_colour_brewer(palette = "Set2")
+
+ggplot(dd_r5y, aes(x=dates,y=log(price), group=clust_3, color=clust_3))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price with log")+
+  xlab("Dates")+
+  theme(axis.title=element_text(size=10,face="bold"))+
+  theme_light()+
+  scale_colour_brewer(palette = "Set2")
+```
+
+## Classify by clusters (yearly):
+```{r}
+dd_ry<-cbind(rolly,clust_1=y_kmeans21,clust_2=y_kmeans22,clust_3=y_kmeans23,price=df[,6][c(253:T)])
+dd_ry<-dd_ry[,-c(2:5)]
+
+ggplot(dd_ry, aes(x=dates,y=price, group=clust_1, color=clust_1))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price")+
+  xlab("Dates")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))+
+  scale_colour_brewer(palette = "Set2")
+
+##########################
+
+ggplot(dd_ry, aes(x=dates,y=price, group=clust_2, color=clust_2))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price")+
+  xlab("Dates")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))+
+  scale_colour_brewer(palette = "Set2")
+
+##########################
+
+ggplot(dd_ry, aes(x=dates,y=price, group=clust_3, color=clust_3))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price")+
+  xlab("Dates")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))+
+  scale_colour_brewer(palette = "Set2")
+
+##########################
+
+ggplot(dd_ry, aes(x=dates,y=log(price), group=clust_1, color=clust_1))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price with log")+
+  xlab("Dates")+
+  theme(axis.title=element_text(size=10,face="bold"))+
+  theme_light()+
+  scale_colour_brewer(palette = "Set2")
+
+ggplot(dd_ry, aes(x=dates,y=log(price), group=clust_2, color=clust_2))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price with log")+
+  xlab("Dates")+
+  theme(axis.title=element_text(size=10,face="bold"))+
+  theme_light()+
+  scale_colour_brewer(palette = "Set2")
+
+ggplot(dd_ry, aes(x=dates,y=log(price), group=clust_3, color=clust_3))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price with log")+
+  xlab("Dates")+
+  theme(axis.title=element_text(size=10,face="bold"))+
+  theme_light()+
+  scale_colour_brewer(palette = "Set2")
+```
+
+## Classify by clusters (half yearly):
+```{r}
+dd_rhy<-cbind(rollhy,clust_1=y_kmeans31,clust_2=y_kmeans32,clust_3=y_kmeans33,price=df[,6][c(127:T)])
+dd_rhy<-dd_rhy[,-c(2:5)]
+
+ggplot(dd_rhy, aes(x=dates,y=price, group=clust_1, color=clust_1))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price")+
+  xlab("Dates")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))+
+  scale_colour_brewer(palette = "Set2")
+
+##########################
+
+ggplot(dd_rhy, aes(x=dates,y=price, group=clust_2, color=clust_2))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price")+
+  xlab("Dates")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))+
+  scale_colour_brewer(palette = "Set2")
+
+##########################
+
+ggplot(dd_rhy, aes(x=dates,y=price, group=clust_3, color=clust_3))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price")+
+  xlab("Dates")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))+
+  scale_colour_brewer(palette = "Set2")
+
+##########################
+
+ggplot(dd_rhy, aes(x=dates,y=log(price), group=clust_1, color=clust_1))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price with log")+
+  xlab("Dates")+
+  theme(axis.title=element_text(size=10,face="bold"))+
+  theme_light()+
+  scale_colour_brewer(palette = "Set2")
+
+ggplot(dd_rhy, aes(x=dates,y=log(price), group=clust_2, color=clust_2))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price with log")+
+  xlab("Dates")+
+  theme(axis.title=element_text(size=10,face="bold"))+
+  theme_light()+
+  scale_colour_brewer(palette = "Set2")
+
+ggplot(dd_rhy, aes(x=dates,y=log(price), group=clust_3, color=clust_3))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price with log")+
+  xlab("Dates")+
+  theme(axis.title=element_text(size=10,face="bold"))+
+  theme_light()+
+  scale_colour_brewer(palette = "Set2")
+```
+
+## Classify by clusters (monthly):
+```{r}
+dd_rm<-cbind(rollm,clust_1=y_kmeans41,clust_2=y_kmeans42,clust_3=y_kmeans43,price=df[,6][c(21:T)])
+dd_rm<-dd_rm[,-c(2:5)]
+
+jpeg("./fig/rm_price.jpg", units="in", width=7, height=7, res=300)
+ggplot(dd_rm, aes(x=dates,y=price, group=clust_1, color=clust_1))+
+  geom_point(size=0.5)+
+  geom_bar(aes(y=price, fill=clust_1),stat="identity")+  
+  ylab("NASDAQ Stock price")+
+  xlab("Dates")+
+  scale_x_date(date_breaks = "4 year", date_labels = "%Y %b %d")+
+  theme_light()+
+  theme(
+    axis.title=element_text(size=10,face="bold"),
+    axis.text.x = element_text(angle=60, hjust=1),
+    legend.position="none")+
+  scale_colour_brewer(palette = "Set2")
+dev.off()
+
+##########################
+
+ggplot(dd_rm, aes(x=dates,y=price, group=clust_2, color=clust_2))+
+  geom_point(size=0.5)+
+  geom_bar(aes(y=price, fill=clust_2),stat="identity")+  
+  ylab("NASDAQ Stock price")+
+  xlab("Dates")+
+  scale_x_date(date_breaks = "4 year", date_labels = "%Y %b %d")+
+  theme_light()+
+  theme(
+    axis.title=element_text(size=10,face="bold"),
+    axis.text.x = element_text(angle=60, hjust=1),
+    legend.position="none")+
+  scale_colour_brewer(palette = "Set2")
+
+##########################
+
+ggplot(dd_rm, aes(x=dates,y=price, group=clust_3, color=clust_3))+
+  geom_point(size=0.5)+
+  geom_bar(aes(y=price, fill=clust_3),stat="identity")+  
+  ylab("NASDAQ Stock price")+
+  xlab("Dates")+
+  scale_x_date(date_breaks = "4 year", date_labels = "%Y %b %d")+
+  theme_light()+
+  theme(
+    axis.title=element_text(size=10,face="bold"),
+    axis.text.x = element_text(angle=60, hjust=1),
+    legend.position="none")+
+  scale_colour_brewer(palette = "Set2")
+
+##########################
+
+ggplot(dd_rm, aes(x=dates,y=log(price), group=clust_1, color=clust_1))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price with log")+
+  xlab("Dates")+
+  theme(axis.title=element_text(size=10,face="bold"))+
+  theme_light()+
+  scale_colour_brewer(palette = "Set2")
+
+ggplot(dd_rm, aes(x=dates,y=log(price), group=clust_2, color=clust_2))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price with log")+
+  xlab("Dates")+
+  theme(axis.title=element_text(size=10,face="bold"))+
+  theme_light()+
+  scale_colour_brewer(palette = "Set2")
+
+ggplot(dd_rm, aes(x=dates,y=log(price), group=clust_3, color=clust_3))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price with log")+
+  xlab("Dates")+
+  theme(axis.title=element_text(size=10,face="bold"))+
+  theme_light()+
+  scale_colour_brewer(palette = "Set2")
+```
+
+## Classify by clusters (weekly):
+```{r}
+dd_rw<-cbind(rollw,clust_1=y_kmeans51,clust_2=y_kmeans52,clust_3=y_kmeans53,price=df[,6][c(6:T)])
+dd_rw<-dd_rw[,-c(2:5)]
+
+ggplot(dd_rw, aes(x=dates,y=price, group=clust_1, color=clust_1))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price")+
+  xlab("Dates")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))+
+  scale_colour_brewer(palette = "Set2")+
+  annotate("rect", xmin=as.Date('2000-01-06'), xmax=as.Date(c('2003-04-14')), ymin=-Inf , ymax=Inf, alpha=0.2,
+           color="blue", fill="blue")+
+  annotate("rect", xmin=as.Date('2007-08-07'), xmax=as.Date(c('2010-01-04')), ymin=-Inf , ymax=Inf, alpha=0.2,
+           color="blue", fill="blue")+
+  annotate("rect", xmin=as.Date('2010-05-06'), xmax=as.Date(c('2010-09-01')), ymin=-Inf , ymax=Inf, alpha=0.2,
+           color="blue", fill="blue")+
+  annotate("rect", xmin=as.Date('2011-08-08'), xmax=as.Date(c('2012-01-01')), ymin=-Inf , ymax=Inf, alpha=0.2,
+           color="blue", fill="blue")+
+  annotate("rect", xmin=as.Date('2018-12-07'), xmax=as.Date(c('2019-02-19')), ymin=-Inf , ymax=Inf, alpha=0.2,
+           color="blue", fill="blue")+
+  annotate("rect", xmin=as.Date('2020-03-02'), xmax=as.Date(c('2020-07-01')), ymin=-Inf , ymax=Inf, alpha=0.2,
+           color="blue", fill="blue")+
+  annotate("rect", xmin=as.Date('2022-02-11'), xmax=as.Date(c('2022-05-09')), ymin=-Inf , ymax=Inf, alpha=0.2,
+           color="blue", fill="blue")
+
+##########################
+
+ggplot(dd_rw, aes(x=dates,y=price, group=clust_2, color=clust_2))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price")+
+  xlab("Dates")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))+
+  scale_colour_brewer(palette = "Set2")
+
+##########################
+
+ggplot(dd_rw, aes(x=dates,y=price, group=clust_3, color=clust_3))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price")+
+  xlab("Dates")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))+
+  scale_colour_brewer(palette = "Set2")
+
+##########################
+
+ggplot(dd_rw, aes(x=dates,y=log(price), group=clust_1, color=clust_1))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price with log")+
+  xlab("Dates")+
+  theme(axis.title=element_text(size=10,face="bold"))+
+  theme_light()+
+  scale_colour_brewer(palette = "Set2")
+
+ggplot(dd_rw, aes(x=dates,y=log(price), group=clust_2, color=clust_2))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price with log")+
+  xlab("Dates")+
+  theme(axis.title=element_text(size=10,face="bold"))+
+  theme_light()+
+  scale_colour_brewer(palette = "Set2")
+
+ggplot(dd_rw, aes(x=dates,y=log(price), group=clust_3, color=clust_3))+
+  geom_point(size=0.5)+
+  ylab("NASDAQ Stock price with log")+
+  xlab("Dates")+
+  theme(axis.title=element_text(size=10,face="bold"))+
+  theme_light()+
+  scale_colour_brewer(palette = "Set2")
+```
+
+
+
+
+## Strategy (5 yearly):
+```{r}
+buy=0
+sell=0
+profit=0
+normal_profit=0
+for (i in 1:dim(dd_r5y)[1]) {  
+    if (i==1) { 
+      if (dd_r5y$clust_1==1){
+        buy<-as.numeric(dd_r5y[i,5])
+        }
+    } 
+    else if (dd_r5y[i,2]==2 & dd_r5y[i-1,2]==1) {
+        sell<-as.numeric(sell+dd_r5y[i,5])
+    } 
+    else if (dd_r5y[i,2]==1 & dd_r5y[i-1,2]==2) {
+        buy<-as.numeric(buy+dd_r5y[i,5])
+    } 
+    profit[i]<-as.vector(print(sell-buy))
+    normal_profit[i]<-as.vector(print(dd_r5y[i,5]-dd_r5y[1,5]))
+}
+
+tail(profit, n=1)
+tail(normal_profit, n=1)
+
+ggplot(dd_r5y, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_1, color=clust_1), size=0.5) + 
+  geom_bar(aes(y=profit, fill=clust_1),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+
+ggplot(dd_r5y, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_1, color=clust_1), size=0.5) + 
+  geom_bar(aes(y=normal_profit-profit, fill=clust_1),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+
+#######################
+buy=0
+sell=0
+profit=0
+normal_profit=0
+
+for (i in 1:dim(dd_r5y)[1]) {   
+    if (i==1) { 
+      if (dd_r5y$clust_2==1){
+        buy<-as.numeric(dd_r5y[i,5])
+        }
+    } 
+    else if (dd_r5y[i,3]==2 & dd_r5y[i-1,3]==1) {
+        sell<-as.numeric(sell+dd_r5y[i,5])
+    } 
+    else if (dd_r5y[i,3]==1 & dd_r5y[i-1,3]==2) {
+        buy<-as.numeric(buy+dd_r5y[i,5])
+    } 
+    profit[i]<-as.vector(print(sell-buy))
+    normal_profit[i]<-as.vector(print(dd_r5y[i,5]-dd_r5y[1,5]))
+}
+
+tail(profit, n=1)
+tail(normal_profit, n=1)
+
+ggplot(dd_r5y, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_2, color=clust_2), size=0.5) + 
+  geom_bar(aes(y=profit, fill=clust_2),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+
+ggplot(dd_r5y, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_2, color=clust_2), size=0.5) + 
+  geom_bar(aes(y=normal_profit-profit, fill=clust_2),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+
+#######################
+buy=0
+sell=0
+profit=0
+normal_profit=0
+
+for (i in 1:dim(dd_r5y)[1]) {   
+  if (i==1) { 
+    if (dd_r5y$clust_3==1){
+      buy<-as.numeric(dd_r5y[i,5])
+      }
+  } 
+  else if (dd_r5y[i,4]==2 & dd_r5y[i-1,4]==1) {
+      sell<-as.numeric(sell+dd_r5y[i,5])
+  } 
+  else if (dd_r5y[i,4]==1 & dd_r5y[i-1,4]==2) {
+      buy<-as.numeric(buy+dd_r5y[i,5])
+  } 
+  profit[i]<-as.vector(print(sell-buy))
+  normal_profit[i]<-as.vector(print(dd_r5y[i,5]-dd_r5y[1,5]))
+}
+
+tail(profit, n=1)
+tail(normal_profit, n=1)
+
+ggplot(dd_r5y, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_3, color=clust_3), size=0.5) + 
+  geom_bar(aes(y=profit, fill=clust_3),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+
+ggplot(dd_r5y, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_3, color=clust_3), size=0.5) + 
+  geom_bar(aes(y=normal_profit-profit, fill=clust_3),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+```
+
+## Strategy (yearly):
+```{r}
+buy=0
+sell=0
+profit=0
+normal_profit=0
+
+for (i in 1:dim(dd_ry)[1]) {   
+    if (i==1) { 
+      if (dd_ry$clust_1==1){
+        buy<-as.numeric(dd_ry[i,5])
+        }
+    } 
+    else if (dd_ry[i,2]==2 & dd_ry[i-1,2]==1) {
+        sell<-as.numeric(sell+dd_ry[i,5])
+    } 
+    else if (dd_ry[i,2]==1 & dd_ry[i-1,2]==2) {
+        buy<-as.numeric(buy+dd_ry[i,5])
+    } 
+    profit[i]<-as.vector(print(sell-buy))
+    normal_profit[i]<-as.vector(print(dd_ry[i,5]-dd_ry[1,5]))
+}
+
+tail(profit, n=1)
+tail(normal_profit, n=1)
+
+ggplot(dd_ry, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_1, color=clust_1), size=0.5) + 
+  geom_bar(aes(y=profit, fill=clust_1),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+
+#######################
+buy=0
+sell=0
+profit=0
+normal_profit=0
+
+for (i in 1:dim(dd_ry)[1]) {   
+    if (i==1) { 
+      if (dd_ry$clust_2==1){
+        buy<-as.numeric(dd_ry[i,5])
+        }
+    } 
+    else if (dd_ry[i,3]==2 & dd_ry[i-1,3]==1) {
+        sell<-as.numeric(sell+dd_ry[i,5])
+    } 
+    else if (dd_ry[i,3]==1 & dd_ry[i-1,3]==2) {
+        buy<-as.numeric(buy+dd_ry[i,5])
+    } 
+    profit[i]<-as.vector(print(sell-buy))
+    normal_profit[i]<-as.vector(print(dd_ry[i,5]-dd_ry[1,5]))
+}
+
+tail(profit, n=1)
+tail(normal_profit, n=1)
+
+ggplot(dd_ry, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_2, color=clust_2), size=0.5) + 
+  geom_bar(aes(y=profit, fill=clust_2),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+
+#######################
+buy=0
+sell=0
+profit=0
+normal_profit=0
+
+for (i in 1:dim(dd_ry)[1]) {   
+  if (i==1) { 
+    if (dd_ry$clust_3==1){
+      buy<-as.numeric(dd_ry[i,5])
+      }
+  } 
+  else if (dd_ry[i,4]==2 & dd_ry[i-1,4]==1) {
+      sell<-as.numeric(sell+dd_ry[i,5])
+  } 
+  else if (dd_ry[i,4]==1 & dd_ry[i-1,4]==2) {
+      buy<-as.numeric(buy+dd_ry[i,5])
+  } 
+  profit[i]<-as.vector(print(sell-buy))
+  normal_profit[i]<-as.vector(print(dd_ry[i,5]-dd_ry[1,5]))
+}
+
+tail(profit, n=1)
+tail(normal_profit, n=1)
+
+ggplot(dd_ry, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_3, color=clust_3), size=0.5) + 
+  geom_bar(aes(y=profit, fill=clust_3),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+
+ggplot(dd_ry, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_1, color=clust_1), size=0.5) + 
+  geom_bar(aes(y=normal_profit-profit, fill=clust_1),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+```
+
+## Strategy (half yearly):
+```{r}
+buy=0
+sell=0
+profit=0
+normal_profit=0
+
+for (i in 1:dim(dd_rhy)[1]) {   
+    if (i==1) { 
+      if (dd_rhy$clust_1==1){
+        buy<-as.numeric(dd_rhy[i,5])
+        }
+    } 
+    else if (dd_rhy[i,2]==2 & dd_rhy[i-1,2]==1) {
+        sell<-as.numeric(sell+dd_rhy[i,5])
+    } 
+    else if (dd_rhy[i,2]==1 & dd_rhy[i-1,2]==2) {
+        buy<-as.numeric(buy+dd_rhy[i,5])
+    } 
+    profit[i]<-as.vector(print(sell-buy))
+    normal_profit[i]<-as.vector(print(dd_rhy[i,5]-dd_rhy[1,5]))
+}
+
+tail(profit, n=1)
+tail(normal_profit, n=1)
+
+ggplot(dd_rhy, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_1, color=clust_1), size=0.5) + 
+  geom_bar(aes(y=profit, fill=clust_1),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+
+ggplot(dd_rhy, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_1, color=clust_1), size=0.5) + 
+  geom_bar(aes(y=normal_profit-profit, fill=clust_1),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+
+#######################
+buy=0
+sell=0
+profit=0
+normal_profit=0
+
+for (i in 1:dim(dd_rhy)[1]) {   
+    if (i==1) { 
+      if (dd_rhy$clust_2==1){
+        buy<-as.numeric(dd_rhy[i,5])
+        }
+    } 
+    else if (dd_rhy[i,3]==2 & dd_rhy[i-1,3]==1) {
+        sell<-as.numeric(sell+dd_rhy[i,5])
+    } 
+    else if (dd_rhy[i,3]==1 & dd_rhy[i-1,3]==2) {
+        buy<-as.numeric(buy+dd_rhy[i,5])
+    } 
+    profit[i]<-as.vector(print(sell-buy))
+    normal_profit[i]<-as.vector(print(dd_rhy[i,5]-dd_rhy[1,5]))
+}
+
+tail(profit, n=1)
+tail(normal_profit, n=1)
+
+ggplot(dd_rhy, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_2, color=clust_2), size=0.5) + 
+  geom_bar(aes(y=profit, fill=clust_2),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+
+ggplot(dd_rhy, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_2, color=clust_2), size=0.5) + 
+  geom_bar(aes(y=normal_profit-profit, fill=clust_2),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+
+#######################
+buy=0
+sell=0
+profit=0
+normal_profit=0
+
+for (i in 1:dim(dd_rhy)[1]) {   
+  if (i==1) { 
+    if (dd_rhy$clust_3==1){
+      buy<-as.numeric(dd_rhy[i,5])
+      }
+  } 
+  else if (dd_rhy[i,4]==2 & dd_rhy[i-1,4]==1) {
+      sell<-as.numeric(sell+dd_rhy[i,5])
+  } 
+  else if (dd_rhy[i,4]==1 & dd_rhy[i-1,4]==2) {
+      buy<-as.numeric(buy+dd_rhy[i,5])
+  } 
+  profit[i]<-as.vector(print(sell-buy))
+  normal_profit[i]<-as.vector(print(dd_rhy[i,5]-dd_rhy[1,5]))
+}
+
+tail(profit, n=1)
+tail(normal_profit, n=1)
+
+ggplot(dd_rhy, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_3, color=clust_3), size=0.5) + 
+  geom_bar(aes(y=profit, fill=clust_3),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+
+ggplot(dd_rhy, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_3, color=clust_3), size=0.5) + 
+  geom_bar(aes(y=normal_profit-profit, fill=clust_3),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+```
+
+## Strategy (monthly):
+```{r}
+### Monthly: 
+buy=0
+sell=0
+profit=0
+normal_profit=0
+
+for (i in 1:dim(dd_rm)[1]) {   
+    if (i==1) { 
+      if (dd_rm$clust_1==1){
+        buy<-as.numeric(dd_rm[i,5])
+        }
+    } 
+    else if (dd_rm[i,2]==2 & dd_rm[i-1,2]==1) {
+        sell<-as.numeric(sell+dd_rm[i,5])
+    } 
+    else if (dd_rm[i,2]==1 & dd_rm[i-1,2]==2) {
+        buy<-as.numeric(buy+dd_rm[i,5])
+    } 
+    profit[i]<-as.vector(print(sell-buy))
+    normal_profit[i]<-as.vector(print(dd_rm[i,5]-dd_rm[1,5]))
+}
+
+tail(profit, n=1)
+tail(normal_profit, n=1)
+
+jpeg("./fig/rm_profit.jpg", units="in", width=7, height=7, res=300)
+ggplot(dd_rm, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_1, color=clust_1), size=0.5) + 
+  geom_bar(aes(y=profit, fill=clust_1),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "4 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),
+        axis.text.x = element_text(angle=60, hjust=1),
+        legend.position = 'none')
+dev.off()
+
+#######################
+buy=0
+sell=0
+profit=0
+normal_profit=0
+
+for (i in 1:dim(dd_rm)[1]) {   
+  if (i==1) { 
+    if (dd_rm$clust_2==1){
+      buy<-as.numeric(dd_rm[i,5])
+      }
+  } 
+  else if (dd_rm[i,3]==2 & dd_rm[i-1,3]==1) {
+      sell<-as.numeric(sell+dd_rm[i,5])
+  } 
+  else if (dd_rm[i,3]==1 & dd_rm[i-1,3]==2) {
+      buy<-as.numeric(buy+dd_rm[i,5])
+  } 
+  profit[i]<-as.vector(print(sell-buy))
+  normal_profit[i]<-as.vector(print(dd_rm[i,5]-dd_rm[1,5]))
+}
+
+tail(profit, n=1)
+tail(normal_profit, n=1)
+
+ggplot(dd_rm, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_2, color=clust_2), size=0.5) + 
+  geom_bar(aes(y=profit, fill=clust_2),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+
+#######################
+buy=0
+sell=0
+profit=0
+normal_profit=0
+
+for (i in 1:dim(dd_rm)[1]) {   
+  if (i==1) { 
+    if (dd_rm$clust_3==1){
+      buy<-as.numeric(dd_rm[i,5])
+      }
+  } 
+  else if (dd_rm[i,4]==2 & dd_rm[i-1,4]==1) {
+      sell<-as.numeric(sell+dd_rm[i,5])
+  } 
+  else if (dd_rm[i,4]==1 & dd_rm[i-1,4]==2) {
+      buy<-as.numeric(buy+dd_rm[i,5])
+  } 
+  profit[i]<-as.vector(print(sell-buy))
+  normal_profit[i]<-as.vector(print(dd_rm[i,5]-dd_rm[1,5]))
+}
+
+tail(profit, n=1)
+tail(normal_profit, n=1)
+
+jpeg("./fig/rm_profit_bp.jpg", units="in", width=7, height=7, res=300)
+ggplot(dd_rm, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_3, color=clust_3), size=0.5) + 
+  geom_bar(aes(y=profit, fill=clust_3),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "4 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),
+        axis.text.x = element_text(angle=60, hjust=1),
+        legend.position = 'none')
+dev.off()
+
+#### Plot:
+ggplot(dd_rm, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_1, color=clust_1), size=0.5) + 
+  geom_bar(aes(y=profit, fill=clust_1),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(limits = as.Date(c('1995-01-03','2022-05-13')),date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))+
+  theme_light()
+
+jpeg("./fig/rm_norm_profit_bp.jpg", units="in", width=7, height=7, res=300)
+ggplot(dd_rm, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_3, color=clust_3), size=0.5) + 
+  geom_bar(aes(y=normal_profit-profit, fill=clust_3),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "4 year", date_labels = "%Y %b %d")+
+  ylab("BP Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),
+        axis.text.x = element_text(angle=60, hjust=1),
+        legend.position = 'none')
+dev.off()
+```
+
+## Strategy (weekly):
+```{r}
+buy=0
+sell=0
+profit=0
+normal_profit=0
+
+for (i in 1:dim(dd_rw)[1]) {   
+  if (i==1) { 
+    if (dd_rw$clust_1==1){
+      buy<-as.numeric(dd_rw[i,5])
+      }
+  } 
+  else if (dd_rw[i,2]==2 & dd_rw[i-1,2]==1) {
+      sell<-as.numeric(sell+dd_rw[i,5])
+  } 
+  else if (dd_rw[i,2]==1 & dd_rw[i-1,2]==2) {
+      buy<-as.numeric(buy+dd_rw[i,5])
+  } 
+  profit[i]<-as.vector(print(sell-buy))
+  normal_profit[i]<-as.vector(print(dd_rw[i,5]-dd_rw[1,5]))
+}
+
+tail(profit, n=1)
+tail(normal_profit, n=1)
+
+ggplot(dd_rw, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_1, color=clust_1), size=0.5) + 
+  geom_bar(aes(y=profit, fill=clust_1),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+
+#######################
+buy=0
+sell=0
+profit=0
+normal_profit=0
+
+for (i in 1:dim(dd_rw)[1]) {   
+  if (i==1) { 
+    if (dd_rw$clust_2==1){
+      buy<-as.numeric(dd_rw[i,5])
+      }
+  } 
+  else if (dd_rw[i,3]==2 & dd_rw[i-1,3]==1) {
+      sell<-as.numeric(sell+dd_rw[i,5])
+  } 
+  else if (dd_rw[i,3]==1 & dd_rw[i-1,3]==2) {
+      buy<-as.numeric(buy+dd_rw[i,5])
+  } 
+  profit[i]<-as.vector(print(sell-buy))
+  normal_profit[i]<-as.vector(print(dd_rw[i,5]-dd_rw[1,5]))
+}
+
+tail(profit, n=1)
+tail(normal_profit, n=1)
+
+ggplot(dd_rw, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_2, color=clust_2), size=0.5) + 
+  geom_bar(aes(y=profit, fill=clust_2),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+
+#######################
+buy=0
+sell=0
+profit=0
+normal_profit=0
+
+for (i in 1:dim(dd_rw)[1]) {   
+  if (i==1) { 
+    if (dd_rw$clust_3==1){
+      buy<-as.numeric(dd_rw[i,5])
+      }
+  } 
+  else if (dd_rw[i,4]==2 & dd_rw[i-1,4]==1) {
+      sell<-as.numeric(sell+dd_rw[i,5])
+  } 
+  else if (dd_rw[i,4]==1 & dd_rw[i-1,4]==2) {
+      buy<-as.numeric(buy+dd_rw[i,5])
+  } 
+  profit[i]<-as.vector(print(sell-buy))
+  normal_profit[i]<-as.vector(print(dd_rw[i,5]-dd_rw[1,5]))
+}
+
+tail(profit, n=1)
+tail(normal_profit, n=1)
+
+ggplot(dd_rw, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_3, color=clust_3), size=0.5) + 
+  geom_bar(aes(y=profit, fill=clust_3),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+
+
+#######################
+dd_rw<-cbind(dd_rw,profit)
+
+ggplot(dd_rw, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_1, color=clust_1), size=0.5) + 
+  geom_bar(aes(y=profit, fill=clust_1),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(limits = as.Date(c('1995-01-03','2022-05-13')),date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+
+ggplot(dd_rw, aes(x=dates)) + 
+  geom_point(aes(y = price, group=clust_1, color=clust_1), size=0.5) + 
+  geom_bar(aes(y=normal_profit-profit, fill=clust_1),stat="identity")+  
+  scale_fill_brewer(palette="Set2")+
+  scale_colour_brewer(palette = "Set2")+
+  scale_x_date(limits = as.Date(c('1995-01-03','2022-05-13')),date_breaks = "2 year", date_labels = "%Y %b %d")+
+  ylab("NASDAQ Stock price and profit")+
+  xlab("Dates")+
+  theme_light()+
+  theme(axis.title=element_text(size=10,face="bold"),axis.text.x = element_text(angle=60, hjust=1))
+```

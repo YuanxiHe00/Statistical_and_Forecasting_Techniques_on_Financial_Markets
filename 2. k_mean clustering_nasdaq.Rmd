@@ -26,17 +26,17 @@ library(plotly)
 library(ggpubr)
 library(factoextra)
 library(NbClust)
+library(quantmod)
 library("scatterplot3d")
 ```
 
 ## Initial setting
 ```{r setup, warning=FALSE, message=FALSE}
 ## Importing data:
-
-#getSymbols(Symbols = "^IXIC", auto_assign = TRUE, from = "1971-02-08")
-#df<-as.data.frame(IXIC)
-#rm(IXIC)
-#save(df, file = "./data/nasdaq.RData")
+getSymbols(Symbols = "^IXIC", auto_assign = TRUE, from = "1971-02-08")
+df<-as.data.frame(IXIC)
+rm(IXIC)
+save(df, file = "./data/nasdaq.RData")
 
 load("./data/nasdaq.RData")
 
@@ -46,7 +46,6 @@ T <- nrow(df)
 price <- df[,6]
 returns <- diff(log(price))*100
 ```
-
 
 ## Rolling: 
 ```{r}
@@ -722,12 +721,12 @@ ggplot() +
 set.seed(1234)
 res42 <- kmeans(rollm[,c(2:4)], centers = 2, nstart = 25)
 res42$centers
-Clusters <- as.character(res42$cluster)
+y_kmeans42 <- as.character(res42$cluster)
 
 set.seed(12345678)
 res422 <- kmeans(rollm[,c(2:4)], centers = 3, nstart = 25)
 res422$centers
-Clusters <- as.character(res422$cluster)
+y_kmeans422 <- as.character(res422$cluster)
 
 colors <- c("#66C2A5", "#FC8D62", "#8DA0CB")
 colors1 <- colors[as.numeric(res42$cluster)]
@@ -738,7 +737,7 @@ scatterplot3d(rollm[,2:4], pch = 16, color=colors1, grid=TRUE)
 scatterplot3d(rollm[,2:4], pch = 16, color=colors2, grid=TRUE)
 
 p1<-ggplot() +
-  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = std, colour = Clusters))+
+  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = std, colour = y_kmeans42))+
   geom_point(mapping = aes_string(x = res42$centers[,1], y = res42$centers[,2]), 
                color = "darkblue", size = 4, alpha=0.7)+
   ylab("Standard Deviation")+
@@ -748,7 +747,7 @@ p1<-ggplot() +
   theme(legend.position="top")
 
 p2<-ggplot() +
-  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = std, colour = Clusters))+
+  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = std, colour = y_kmeans42))+
   geom_point(mapping = aes_string(x = res422$centers[,1], y = res422$centers[,2]), 
                color = "darkblue", size = 4, alpha=0.7)+
   ylab("Standard Deviation")+
@@ -758,7 +757,7 @@ p2<-ggplot() +
   theme(legend.position="top")
 
 p3<-ggplot() +
-  geom_point(data = as.data.frame(rollm), mapping = aes(x = std, y = skew, colour = Clusters))+
+  geom_point(data = as.data.frame(rollm), mapping = aes(x = std, y = skew, colour = y_kmeans42))+
   geom_point(mapping = aes_string(x = res42$centers[,2], y = res42$centers[,3]), 
                color = "darkblue", size = 4, alpha=0.7)+
   ylab("Skewness")+
@@ -768,7 +767,7 @@ p3<-ggplot() +
   theme(legend.position="top")
 
 p4<-ggplot() +
-  geom_point(data = as.data.frame(rollm), mapping = aes(x = std, y = skew, colour = Clusters))+
+  geom_point(data = as.data.frame(rollm), mapping = aes(x = std, y = skew, colour = y_kmeans42))+
   geom_point(mapping = aes_string(x = res422$centers[,2], y = res422$centers[,3]), 
                color = "darkblue", size = 4, alpha=0.7)+
   ylab("Skewness")+
@@ -778,7 +777,7 @@ p4<-ggplot() +
   theme(legend.position="top")
 
 p5<-ggplot() +
-  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = skew, colour = Clusters))+
+  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = skew, colour = y_kmeans42))+
   geom_point(mapping = aes_string(x = res42$centers[,1], y = res42$centers[,3]), 
                color = "darkblue", size = 4, alpha=0.7)+
   ylab("Skewness")+
@@ -788,7 +787,7 @@ p5<-ggplot() +
   theme(legend.position="top")
 
 p6<-ggplot() +
-  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = skew, colour = Clusters))+
+  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = skew, colour = y_kmeans42))+
   geom_point(mapping = aes_string(x = res422$centers[,1], y = res422$centers[,3]), 
                color = "darkblue", size = 4, alpha=0.7)+
   ylab("Skewness")+
@@ -807,12 +806,12 @@ rm(p1,p2,p3,p4,p5,p6)
 set.seed(123456)
 res43 <- kmeans(rollm[,c(2:5)], centers = 2, nstart = 25)
 res43$centers
-Clusters <- as.character(res43$cluster)
+y_kmeans43 <- as.character(res43$cluster)
 
 set.seed(12345678)
 res433 <- kmeans(rollm[,c(2:5)], centers = 3, nstart = 25)
 res433$centers
-Clusters <- as.character(res433$cluster)
+y_kmeans433 <- as.character(res433$cluster)
 
 colors <- c("#66C2A5", "#FC8D62", "#8DA0CB")
 colors1 <- colors[as.numeric(res43$cluster)]
@@ -831,7 +830,7 @@ scatterplot3d(rollm[,c(2,4,5)], pch = 16, color=colors2, grid=TRUE)
 scatterplot3d(rollm[,c(3,4,5)], pch = 16, color=colors2, grid=TRUE)
 
 p1<-ggplot() +
-  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = std, colour = Clusters))+
+  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = std, colour = y_kmeans43))+
   geom_point(mapping = aes_string(x = res43$centers[,1], y = res43$centers[,2]), 
                color = "darkblue", size = 4, alpha=0.7)+
   ylab("Standard Deviation")+
@@ -841,7 +840,7 @@ p1<-ggplot() +
   theme(legend.position="top")
 
 p2<-ggplot() +
-  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = skew, colour = Clusters))+
+  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = skew, colour = y_kmeans43))+
   geom_point(mapping = aes_string(x = res43$centers[,1], y = res43$centers[,3]), 
                color = "darkblue", size = 4, alpha=0.7)+
   ylab("Skewness")+
@@ -851,7 +850,7 @@ p2<-ggplot() +
   theme(legend.position="top")
 
 p3<-ggplot() +
-  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = kurt, colour = Clusters))+
+  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = kurt, colour = y_kmeans43))+
   geom_point(mapping = aes_string(x = res43$centers[,1], y = res43$centers[,4]), 
                color = "darkblue", size = 4, alpha=0.7)+
   ylab("Kurtosis")+
@@ -861,7 +860,7 @@ p3<-ggplot() +
   theme(legend.position="top")
 
 p4<-ggplot() +
-  geom_point(data = as.data.frame(rollm), mapping = aes(x = std, y = skew, colour = Clusters))+
+  geom_point(data = as.data.frame(rollm), mapping = aes(x = std, y = skew, colour = y_kmeans43))+
   geom_point(mapping = aes_string(x = res43$centers[,2], y = res43$centers[,3]), 
                color = "darkblue", size = 4, alpha=0.7)+
   xlab("Standard Deviation")+
@@ -871,7 +870,7 @@ p4<-ggplot() +
   theme(legend.position="top")
 
 p5<-ggplot() +
-  geom_point(data = as.data.frame(rollm), mapping = aes(x = std, y = kurt, colour = Clusters))+
+  geom_point(data = as.data.frame(rollm), mapping = aes(x = std, y = kurt, colour = y_kmeans43))+
   geom_point(mapping = aes_string(x = res43$centers[,2], y = res43$centers[,4]), 
                color = "darkblue", size = 4, alpha=0.7)+
   xlab("Standard Deviation")+
@@ -881,7 +880,7 @@ p5<-ggplot() +
   theme(legend.position="top")
 
 p6<-ggplot() +
-  geom_point(data = as.data.frame(rollm), mapping = aes(x = skew, y = kurt, colour = Clusters))+
+  geom_point(data = as.data.frame(rollm), mapping = aes(x = skew, y = kurt, colour = y_kmeans43))+
   geom_point(mapping = aes_string(x = res43$centers[,3], y = res43$centers[,4]), 
                color = "darkblue", size = 4, alpha=0.7)+
   ylab("Kurtosis")+
@@ -893,7 +892,7 @@ p6<-ggplot() +
 ggarrange(p1,p2,p3,p4,p5,p6, common.legend = TRUE, ncol = 2, nrow = 3)
 
 p7<-ggplot() +
-  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = std, colour = Clusters))+
+  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = std, colour = y_kmeans43))+
   geom_point(mapping = aes_string(x = res433$centers[,1], y = res433$centers[,2]), 
                color = "darkblue", size = 4, alpha=0.7)+
   ylab("Standard Deviation")+
@@ -903,7 +902,7 @@ p7<-ggplot() +
   theme(legend.position="top")
 
 p8<-ggplot() +
-  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = skew, colour = Clusters))+
+  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = skew, colour = y_kmeans43))+
   geom_point(mapping = aes_string(x = res433$centers[,1], y = res433$centers[,3]), 
                color = "darkblue", size = 4, alpha=0.7)+
   ylab("Skewness")+
@@ -913,7 +912,7 @@ p8<-ggplot() +
   theme(legend.position="top")
 
 p9<-ggplot() +
-  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = kurt, colour = Clusters))+
+  geom_point(data = as.data.frame(rollm), mapping = aes(x = m, y = kurt, colour = y_kmeans43))+
   geom_point(mapping = aes_string(x = res433$centers[,1], y = res433$centers[,4]), 
                color = "darkblue", size = 4, alpha=0.7)+
   ylab("Kurtosis")+
@@ -923,7 +922,7 @@ p9<-ggplot() +
   theme(legend.position="top")
 
 p10<-ggplot() +
-  geom_point(data = as.data.frame(rollm), mapping = aes(x = std, y = skew, colour = Clusters))+
+  geom_point(data = as.data.frame(rollm), mapping = aes(x = std, y = skew, colour = y_kmeans43))+
   geom_point(mapping = aes_string(x = res433$centers[,2], y = res433$centers[,3]), 
                color = "darkblue", size = 4, alpha=0.7)+
   xlab("Standard Deviation")+
@@ -933,7 +932,7 @@ p10<-ggplot() +
   theme(legend.position="top")
 
 p11<-ggplot() +
-  geom_point(data = as.data.frame(rollm), mapping = aes(x = std, y = kurt, colour = Clusters))+
+  geom_point(data = as.data.frame(rollm), mapping = aes(x = std, y = kurt, colour = y_kmeans43))+
   geom_point(mapping = aes_string(x = res433$centers[,2], y = res433$centers[,4]), 
                color = "darkblue", size = 4, alpha=0.7)+
   xlab("Standard Deviation")+
@@ -943,7 +942,7 @@ p11<-ggplot() +
   theme(legend.position="top")
 
 p12<-ggplot() +
-  geom_point(data = as.data.frame(rollm), mapping = aes(x = skew, y = kurt, colour = Clusters))+
+  geom_point(data = as.data.frame(rollm), mapping = aes(x = skew, y = kurt, colour = y_kmeans43))+
   geom_point(mapping = aes_string(x = res433$centers[,3], y = res433$centers[,4]), 
                color = "darkblue", size = 4, alpha=0.7)+
   ylab("Kurtosis")+

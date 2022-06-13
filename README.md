@@ -1,0 +1,2 @@
+# Statistical_and_Forecasting_Techniques_on_Financial_Markets
+The repository of my Bachelor thesis
